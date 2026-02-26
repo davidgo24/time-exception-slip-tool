@@ -165,6 +165,18 @@ footer {
     vertical-align: -2px;
     margin-right: 2px;
 }
+.footer-meme {
+    width: 90px;
+    height: 90px;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    opacity: 0.85;
+    transition: opacity 0.2s, transform 0.2s;
+}
+.footer-meme:hover {
+    opacity: 1;
+    transform: scale(1.05);
+}
 
 /* Cards */
 .card {
