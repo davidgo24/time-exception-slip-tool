@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Exception Slip Automation Tool</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>document.documentElement.dataset.theme=localStorage.getItem("app_theme")||"default"</script>
+</head>
+<body>
+    <header>
+        <div class="header-inner">
+            <div>
+                <h1>Time Exception Slip Automation Tool</h1>
+                <p class="subtitle">Paper Trail, Automated</p>
+            </div>
+            <div class="theme-switcher">
+                <button class="theme-btn active" data-theme="default" title="Default">Default</button>
+                <button class="theme-btn" data-theme="lissa" title="Lissa Mode">Lissa Mode</button>
+                <button class="theme-btn" data-theme="dark" title="Dark Mode">Dark</button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Step 1: Upload & Pay Period -->
+        <section class="card" id="setup-card">
+            <h2><span class="step-num">1</span> Setup</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="csv-upload">Employee List (CSV)</label>
+                    <div class="file-upload-wrap">
+                        <input type="file" id="csv-upload" accept=".csv">
+                        <span id="csv-status" class="file-status">No file loaded</span>
+                        <button id="btn-clear-csv" class="btn btn-small btn-ghost hidden" title="Remove file">Remove</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="pp-end-date">Pay Period Ending Date (Saturday)</label>
+                    <input type="date" id="pp-end-date">
+                    <span id="pp-info" class="help-text"></span>
+                </div>
+            </div>
+            <div id="employee-summary" class="hidden">
+                <p><strong id="emp-count">0</strong> employees loaded, sorted A–Z by last name.</p>
+            </div>
+        </section>
+
+        <!-- Feature Tabs -->
+        <div class="tabs" id="feature-tabs">
+            <button class="tab active" data-tab="slips">Blank Slips (Binder)</button>
+            <button class="tab" data-tab="overtime">Overtime Entry</button>
+        </div>
+
+        <!-- Feature 1: Blank Slips -->
+        <section class="card tab-content active" id="tab-slips">
+            <h2><span class="step-num">2a</span> Generate Blank Slip Binder</h2>
+            <p class="description">Generate pre-filled Time Exception Slips for all employees — name, employee #, dept 910, and pay period date. One merged PDF binder, alphabetical.</p>
+            <button id="btn-generate-slips" class="btn btn-primary" disabled>Generate Binder PDF</button>
+            <div id="slips-status" class="status-msg hidden"></div>
+        </section>
+
+        <!-- Feature 2: Overtime Entry -->
+        <section class="card tab-content" id="tab-overtime">
+            <h2><span class="step-num">2b</span> Overtime Entry</h2>
+
+            <div id="ot-week-info" class="week-info hidden">
+                <div class="week-badge">Week 1: <span id="wk1-range"></span></div>
+                <div class="week-badge">Week 2: <span id="wk2-range"></span></div>
+            </div>
+
+            <!-- Employee search -->
+            <div class="entry-panel" id="entry-panel">
+                <div class="form-group entry-emp-group">
+                    <label>Select Employee</label>
+                    <div class="combobox" id="emp-combobox">
+                        <input type="text" id="emp-search" placeholder="Type a name or employee #, then press Enter..." autocomplete="off" disabled>
+                        <div class="combobox-list hidden" id="emp-list"></div>
+                    </div>
+                    <input type="hidden" id="emp-selected-no" value="">
+                </div>
+            </div>
+
+            <!-- Completed employees (collapsible) -->
+            <div id="ot-cards-wrap" class="hidden">
+                <div class="collapsible-header" id="cards-toggle">
+                    <h3>Employees with OT <span id="ot-entry-count" class="badge">0</span></h3>
+                    <div class="collapsible-actions">
+                        <span class="chevron">&#9660;</span>
+                    </div>
+                </div>
+                <div id="cards-body">
+                    <div id="ot-cards"></div>
+                </div>
+            </div>
+
+            <!-- Summary (collapsible) -->
+            <div id="ot-summary-wrap" class="hidden">
+                <div class="collapsible-header" id="summary-toggle">
+                    <h3>Summary</h3>
+                    <span class="chevron">&#9660;</span>
+                </div>
+                <div id="summary-body">
+                    <div class="table-scroll">
+                        <table id="ot-summary-table" class="summary-table">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Week</th>
+                                    <th>OT 1.0</th>
+                                    <th>OT 1.5</th>
+                                    <th>CTE 1.0</th>
+                                    <th>CTE 1.5</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ot-summary-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button id="btn-generate-ot" class="btn btn-primary" disabled>Generate OT Slips + Excel</button>
+                <button id="btn-clear-session" class="btn btn-danger" disabled>Clear &amp; Start New Period</button>
+            </div>
+            <div id="ot-status" class="status-msg hidden"></div>
+        </section>
+
+        <!-- About This Tool -->
+        <section class="card about-card" id="about-card">
+            <div class="collapsible-header" id="about-toggle">
+                <h2 style="margin-bottom:0"><span class="step-num">?</span> About This Tool</h2>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div id="about-body" class="about-body collapsed-content">
+                <div class="about-content">
+                    <p class="about-mission">This tool was built with one goal — to make sure our employees get paid as accurately and efficiently as possible. That matters to us. Getting payroll right isn't just a task, it's a responsibility, and this tool helps us deliver on that every single pay period.</p>
+
+                    <p class="about-lead">Every pay period we have to fill out <strong>Time Exception Slips</strong> by hand for ~128 employees — writing in names, employee numbers, dates, overtime hours, the whole thing. It is time consuming and honestly, we are human, we are bound to make a few errors here and there. This tool does all of that for us automatically with increased accuracy.</p>
+
+                    <div class="about-grid">
+                        <div class="about-block">
+                            <h4>What it does</h4>
+                            <ul>
+                                <li><strong>Blank Slip Binder</strong> — Upload the employee list, pick the pay period date, and it spits out one big PDF with everyone's slip already filled in. Names, employee numbers, dept code, dates — all done. Just print it.</li>
+                                <li><strong>Overtime Entry</strong> — Search for an employee, punch in their OT hours per day, and it fills out their slip + builds an Excel sheet for Finance. No more handwriting OT on slips and then retyping it into a spreadsheet.</li>
+                            </ul>
+                        </div>
+                        <div class="about-block">
+                            <h4>Time & accuracy improvements</h4>
+                            <table class="about-table">
+                                <thead><tr><th>Task</th><th>By hand</th><th>With this tool</th></tr></thead>
+                                <tbody>
+                                    <tr><td>Fill ~128 blank slips</td><td>~2 hrs</td><td>~10 sec</td></tr>
+                                    <tr><td>Enter OT for ~30 employees</td><td>~1.5 hrs</td><td>~20 min</td></tr>
+                                    <tr><td>Build the Excel summary</td><td>~30 min</td><td>Instant</td></tr>
+                                    <tr><td>Merge everything into one PDF</td><td>~15 min</td><td>Instant</td></tr>
+                                    <tr><td>Name/ID/date typos</td><td>Common</td><td>Eliminated</td></tr>
+                                    <tr><td>OT math errors</td><td>Occasional</td><td>Eliminated</td></tr>
+                                    <tr><td>PDF ↔ Excel mismatches</td><td>Possible</td><td>Eliminated</td></tr>
+                                </tbody>
+                            </table>
+                            <p class="about-highlight">Roughly <strong>100+ hours saved per year</strong> with significantly higher accuracy across the board.</p>
+                        </div>
+                    </div>
+
+                    <div class="about-block">
+                        <h4>How to use it</h4>
+                        <ol>
+                            <li>Upload the employee CSV (just needs LastName, FirstName, EmployeeNumber)</li>
+                            <li>Pick the pay period ending date</li>
+                            <li>Use <em>Blank Slips</em> to generate the full binder, or <em>Overtime Entry</em> to log OT and get your PDFs + Excel</li>
+                            <li>Download, print, done</li>
+                        </ol>
+                        <p class="about-note">Your data stays in your browser only — nothing gets saved to a server. Hit "Clear & Start New Period" when you're done with a pay cycle.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Less paperwork, more coffee breaks. Built by <a href="https://github.com/davidgo24" target="_blank" rel="noopener" class="footer-link"><svg class="gh-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> David Godinez</a> — Custom Internal Gov Tool</p>
+    </footer>
+
+    <!-- Active employee overlay card -->
+    <div id="active-overlay" class="overlay hidden">
+        <div id="active-card" class="active-card">
+            <div class="active-card-header">
+                <span id="active-emp-name"></span>
+                <span class="esc-hint">Esc or Ctrl+Enter when done</span>
+            </div>
+            <div id="active-emp-entries"></div>
+            <div class="active-card-fields" id="entry-fields-row">
+                <div class="form-group">
+                    <label for="ot-date">Date</label>
+                    <input type="date" id="ot-date">
+                </div>
+                <div class="form-group">
+                    <label for="ot-category">Type</label>
+                    <select id="ot-category">
+                        <option value="ot10">OT 1.0</option>
+                        <option value="ot15">OT 1.5</option>
+                        <option value="cte10">CTE 1.0</option>
+                        <option value="cte15">CTE 1.5</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="ot-hours">Hours</label>
+                    <input type="number" id="ot-hours" step="0.5" min="0.5" max="24" placeholder="1.0">
+                </div>
+                <div class="form-group form-group-btn">
+                    <button id="btn-add-ot" class="btn btn-add">+ Add</button>
+                </div>
+            </div>
+            <div id="active-card-status" class="status-msg hidden"></div>
+            <div class="active-card-footer">
+                <button id="btn-done-emp" class="btn btn-primary">Done with Employee</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm modal -->
+    <div id="confirm-modal" class="modal hidden">
+        <div class="modal-content">
+            <p id="modal-message"></p>
+            <div class="modal-actions">
+                <button id="modal-cancel" class="btn btn-ghost">Cancel</button>
+                <button id="modal-confirm" class="btn btn-danger">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
