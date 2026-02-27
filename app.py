@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple
 from flask import (
     Flask, render_template, request, jsonify, send_file, session
 )
-from PyPDF2 import PdfReader, PdfWriter, PdfMerger
+from PyPDF2 import PdfReader, PdfWriter
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from reportlab.pdfgen import canvas
@@ -27,6 +27,9 @@ TEMPLATE_PDF = os.path.join(os.path.dirname(__file__), "OT_Time_Exception_Slip_S
 DEPT_CODE = "910"
 DATE_FMT_OUTPUT = "%m-%d-%y"
 PAGE_W, PAGE_H = letter  # 612 x 792
+
+with open(TEMPLATE_PDF, "rb") as _f:
+    _TEMPLATE_BYTES = _f.read()
 
 # ---------------------------------------------------------------------------
 # Field coordinate map (extracted from PDF annotations)
@@ -201,6 +204,7 @@ def fill_single_pdf(employee: dict, pp_end: str, ot_data: dict = None) -> bytes:
 
     values = {
         "Employee Name": combined_name,
+        "Dept": DEPT_CODE,
         "Ending Date": pp_end_formatted,
         "Employee": employee["emp_no"],
     }
@@ -234,7 +238,7 @@ def fill_single_pdf(employee: dict, pp_end: str, ot_data: dict = None) -> bytes:
 
     overlay_bytes = _create_overlay(values)
 
-    template_reader = PdfReader(TEMPLATE_PDF)
+    template_reader = PdfReader(io.BytesIO(_TEMPLATE_BYTES))
     overlay_reader = PdfReader(io.BytesIO(overlay_bytes))
 
     template_page = template_reader.pages[0]
@@ -300,12 +304,12 @@ def _fmt_hours(h: float) -> str:
 
 
 def merge_pdfs(pdf_bytes_list: List[bytes]) -> bytes:
-    merger = PdfMerger()
+    writer = PdfWriter()
     for pdf_bytes in pdf_bytes_list:
-        merger.append(io.BytesIO(pdf_bytes))
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        writer.add_page(reader.pages[0])
     buf = io.BytesIO()
-    merger.write(buf)
-    merger.close()
+    writer.write(buf)
     return buf.getvalue()
 
 

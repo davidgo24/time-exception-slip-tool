@@ -665,17 +665,22 @@
         showStatus($slipsStatus, "Generating PDF binder...", "loading");
         $btnGenerateSlips.disabled = true;
         try {
+            const ctrl1 = new AbortController();
+            const t1 = setTimeout(() => ctrl1.abort(), 120000);
             const resp = await fetch("/api/generate-slips", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ employees: state.employees, payPeriodEnd: state.payPeriodEnd }),
+                signal: ctrl1.signal,
             });
+            clearTimeout(t1);
             if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || "Server error"); }
             const blob = await resp.blob();
             downloadBlob(blob, resp.headers.get("Content-Disposition")?.split("filename=")[1] || "slips.pdf");
             showStatus($slipsStatus, "PDF binder downloaded successfully.", "success");
         } catch (err) {
-            showStatus($slipsStatus, "Error: " + err.message, "error");
+            const msg = err.name === "AbortError" ? "Request timed out — try again, it may take a moment for large employee lists." : err.message;
+            showStatus($slipsStatus, "Error: " + msg, "error");
         } finally { updateButtonStates(); }
     });
 
@@ -693,11 +698,15 @@
         });
 
         try {
+            const ctrl2 = new AbortController();
+            const t2 = setTimeout(() => ctrl2.abort(), 120000);
             const resp = await fetch("/api/generate-overtime", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ employees: state.employees, payPeriodEnd: state.payPeriodEnd, otEntries: otByEmp }),
+                signal: ctrl2.signal,
             });
+            clearTimeout(t2);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
 
@@ -709,7 +718,8 @@
 
             showStatus($otStatus, "OT slips PDF and Excel summary downloaded.", "success");
         } catch (err) {
-            showStatus($otStatus, "Error: " + err.message, "error");
+            const msg = err.name === "AbortError" ? "Request timed out — try again, it may take a moment." : err.message;
+            showStatus($otStatus, "Error: " + msg, "error");
         } finally { updateButtonStates(); }
     });
 
