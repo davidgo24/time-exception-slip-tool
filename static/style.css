@@ -576,7 +576,27 @@ td:first-child { text-align: left; }
 }
 .status-msg.success { background: var(--green-light); color: var(--green); border: 1px solid var(--green); }
 .status-msg.error { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger); }
-.status-msg.loading { background: var(--primary-light); color: var(--primary); border: 1px solid var(--primary); }
+.status-msg.loading { background: var(--primary-light); color: var(--primary); border: 1px solid var(--primary); overflow: hidden; }
+
+/* Animated progress bar inside loading status */
+.progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    width: 35%;
+    background: var(--primary);
+    border-radius: 2px;
+    animation: progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes progress-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+}
 
 /* Modal */
 .modal {

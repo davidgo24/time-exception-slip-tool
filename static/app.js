@@ -662,7 +662,7 @@
     // Generate blank slips (Feature 1)
     // -----------------------------------------------------------------------
     $btnGenerateSlips.addEventListener("click", async () => {
-        showStatus($slipsStatus, "Generating PDF binder...", "loading");
+        startElapsedTimer($slipsStatus, "Generating PDF binder...");
         $btnGenerateSlips.disabled = true;
         try {
             const ctrl1 = new AbortController();
@@ -677,8 +677,10 @@
             if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || "Server error"); }
             const blob = await resp.blob();
             downloadBlob(blob, resp.headers.get("Content-Disposition")?.split("filename=")[1] || "slips.pdf");
+            stopElapsedTimer($slipsStatus);
             showStatus($slipsStatus, "PDF binder downloaded successfully.", "success");
         } catch (err) {
+            stopElapsedTimer($slipsStatus);
             const msg = err.name === "AbortError" ? "Request timed out — try again, it may take a moment for large employee lists." : err.message;
             showStatus($slipsStatus, "Error: " + msg, "error");
         } finally { updateButtonStates(); }
@@ -688,7 +690,7 @@
     // Generate OT slips + Excel (Feature 2)
     // -----------------------------------------------------------------------
     $btnGenerateOt.addEventListener("click", async () => {
-        showStatus($otStatus, "Generating OT slips and Excel...", "loading");
+        startElapsedTimer($otStatus, "Generating OT slips and Excel...");
         $btnGenerateOt.disabled = true;
 
         const otByEmp = {};
@@ -716,8 +718,10 @@
             const xlBytes = Uint8Array.from(atob(data.excel), c => c.charCodeAt(0));
             downloadBlob(new Blob([xlBytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), data.excelFilename);
 
+            stopElapsedTimer($otStatus);
             showStatus($otStatus, "OT slips PDF and Excel summary downloaded.", "success");
         } catch (err) {
+            stopElapsedTimer($otStatus);
             const msg = err.name === "AbortError" ? "Request timed out — try again, it may take a moment." : err.message;
             showStatus($otStatus, "Error: " + msg, "error");
         } finally { updateButtonStates(); }
@@ -759,11 +763,25 @@
         URL.revokeObjectURL(url);
     }
     function showStatus(el, msg, type) {
-        el.textContent = msg;
+        el.innerHTML = msg;
         el.className = `status-msg ${type}`;
         el.classList.remove("hidden");
     }
-    function hideStatus(el) { el.classList.add("hidden"); }
+    function hideStatus(el) { el.classList.add("hidden"); el._timer = null; }
+
+    function startElapsedTimer(el, baseMsg) {
+        const start = Date.now();
+        el.innerHTML = `<div class="progress-bar"><div class="progress-fill"></div></div>${baseMsg} 0s elapsed`;
+        el.className = "status-msg loading";
+        el.classList.remove("hidden");
+        el._timer = setInterval(() => {
+            const sec = Math.round((Date.now() - start) / 1000);
+            el.innerHTML = `<div class="progress-bar"><div class="progress-fill"></div></div>${baseMsg} ${sec}s elapsed`;
+        }, 1000);
+    }
+    function stopElapsedTimer(el) {
+        if (el._timer) { clearInterval(el._timer); el._timer = null; }
+    }
 
     // -----------------------------------------------------------------------
     // Init
