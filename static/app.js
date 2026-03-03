@@ -413,10 +413,10 @@
                 <span class="row-wk">Wk ${wk}</span>
                 <span class="row-date">${fmtShort(d)}</span>
                 <span class="row-cat">${CAT_LABELS[e.category]}</span>
-                <span class="row-hrs">${e.hours.toFixed(1)} hrs</span>
+                <span class="row-hrs">${Number(e.hours).toFixed(2)} hrs</span>
                 <button class="btn-remove" data-idx="${e._idx}" title="Remove">&times;</button>
             </div>`;
-        }).join("") + `<div class="active-total">Total: ${totalHrs.toFixed(1)} hrs</div>`;
+        }).join("") + `<div class="active-total">Total: ${Number(totalHrs).toFixed(2)} hrs</div>`;
 
         $activeEntries.querySelectorAll(".btn-remove").forEach(btn => {
             btn.addEventListener("click", () => {
@@ -496,9 +496,10 @@
 
         const emp = state.employees.find(e => e.emp_no === empNo);
 
+        const hrs = Math.round(hours * 100) / 100;
         state.otEntries.push({
             empNo, last: emp.last, first: emp.first,
-            date, category, hours,
+            date, category, hours: hrs,
         });
 
         saveState();
@@ -561,7 +562,7 @@
                 <div class="completed-row-header">
                     <span class="completed-name">${g.emp.last}, ${g.emp.first}</span>
                     <span class="completed-meta">
-                        #${g.emp.empNo} &middot; ${g.entries.length} entries &middot; ${g.totalHrs.toFixed(1)} hrs
+                        #${g.emp.empNo} &middot; ${g.entries.length} entries &middot; ${Number(g.totalHrs).toFixed(2)} hrs
                     </span>
                     <button class="btn-edit-emp btn-small btn-ghost" data-empno="${g.emp.empNo}">Edit</button>
                 </div>
@@ -621,7 +622,7 @@
             let wk1Total = 0;
             const wk1Cells = CATS.map(c => {
                 const v = emp.wk["1"].cats[c] || 0; wk1Total += v;
-                return `<td>${v ? v.toFixed(1) : ""}</td>`;
+                return `<td>${v ? Number(v).toFixed(2) : ""}</td>`;
             }).join("");
             empTotal += wk1Total;
 
@@ -629,7 +630,7 @@
             let wk2Total = 0;
             const wk2Cells = CATS.map(c => {
                 const v = emp.wk["2"].cats[c] || 0; wk2Total += v;
-                return `<td>${v ? v.toFixed(1) : ""}</td>`;
+                return `<td>${v ? Number(v).toFixed(2) : ""}</td>`;
             }).join("");
             empTotal += wk2Total;
             grandTotal += empTotal;
@@ -640,19 +641,19 @@
             html += `<tr>
                 <td class="emp-name-cell" rowspan="2">${emp.last}, ${emp.first}<br><span style="font-size:0.78rem;color:var(--text-muted)">#${emp.empNo}</span></td>
                 <td class="wk-label">${wk1Label}</td>${wk1Cells}
-                <td>${wk1Total ? wk1Total.toFixed(1) : ""}</td>
+                <td>${wk1Total ? Number(wk1Total).toFixed(2) : ""}</td>
             </tr>
             <tr class="wk-row"><td class="wk-label">${wk2Label}</td>${wk2Cells}
-                <td>${wk2Total ? wk2Total.toFixed(1) : ""}</td>
+                <td>${wk2Total ? Number(wk2Total).toFixed(2) : ""}</td>
             </tr>
             <tr><td colspan="7" class="emp-total-cell" style="text-align:right;padding-right:1rem;">
-                Employee Total: <strong>${empTotal.toFixed(1)}</strong>
+                Employee Total: <strong>${Number(empTotal).toFixed(2)}</strong>
             </td></tr>`;
         });
 
         html += `<tr class="grand-total">
             <td colspan="6" style="text-align:right;padding-right:1rem;">GRAND TOTAL</td>
-            <td><strong>${grandTotal.toFixed(1)}</strong></td>
+            <td><strong>${Number(grandTotal).toFixed(2)}</strong></td>
         </tr>`;
 
         $otSummaryBody.innerHTML = html;

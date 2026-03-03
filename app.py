@@ -273,7 +273,7 @@ def _aggregate_ot_by_week(ot_data: dict, wk1_start, wk1_end, wk2_start, wk2_end)
             continue
 
         cat = entry.get("category", "")
-        hours = float(entry.get("hours", 0))
+        hours = round(float(entry.get("hours", 0)), 2)
         if hours <= 0:
             continue
 
@@ -298,9 +298,7 @@ def _aggregate_ot_by_week(ot_data: dict, wk1_start, wk1_end, wk2_start, wk2_end)
 
 
 def _fmt_hours(h: float) -> str:
-    if h == int(h):
-        return f"{int(h)}.0"
-    return f"{h:.1f}"
+    return f"{round(h, 2):.2f}"
 
 
 def merge_pdfs(pdf_bytes_list: List[bytes]) -> bytes:
