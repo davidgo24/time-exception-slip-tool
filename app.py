@@ -532,7 +532,7 @@ def generate_slips():
 # ---------------------------------------------------------------------------
 # Import from Corrections spreadsheet
 # ---------------------------------------------------------------------------
-# Column indices for OPS CORRECTIONS sheet: Name(2), Date(4), Should Be(8), Diff(10), Note(16)
+# Column indices for OPS CORRECTIONS sheet: Name(2), Date(4), Should Be type(8), Diff(14), Note(16)
 # Note "1.0" = rate 1.0x (OT 1.0 / CTE 1.0), else 1.5x (OT 1.5 / CTE 1.5)
 
 def _excel_serial_to_date(serial: float) -> Optional[str]:
@@ -615,7 +615,7 @@ def parse_corrections_spreadsheet(file_bytes: bytes, filename: str, employees: L
                     continue
                 name = str(sh.cell_value(r, 2)).strip()
                 date_str = _excel_serial_to_date(sh.cell_value(r, 4))
-                diff = sh.cell_value(r, 10)
+                diff = sh.cell_value(r, 14) if sh.ncols > 14 else sh.cell_value(r, 10)
                 note = str(sh.cell_value(r, 16)).strip()
                 try:
                     hrs = round(float(diff), 2)
@@ -669,16 +669,16 @@ def parse_corrections_spreadsheet(file_bytes: bytes, filename: str, employees: L
                     date_str = date_val.strftime("%Y-%m-%d")
                 else:
                     date_str = ""
-                try:
-                    diff = row[10]
-                    hrs = round(float(diff or 0), 2)
-                except (TypeError, ValueError):
-                    continue
-                if hrs <= 0:
-                    continue
                 note = str(row[16] if len(row) > 16 else "").strip()
                 cat = map_category(typ, note)
                 if not cat:
+                    continue
+                diff_val = row[14] if len(row) > 14 else row[10]
+                try:
+                    hrs = round(float(diff_val or 0), 2)
+                except (TypeError, ValueError):
+                    continue
+                if hrs <= 0:
                     continue
                 emp = find_emp(name)
                 if emp:
