@@ -50,6 +50,7 @@
         <div class="tabs" id="feature-tabs">
             <button class="tab active" data-tab="slips">Blank Slips (Binder)</button>
             <button class="tab" data-tab="overtime">Overtime Entry</button>
+            <button class="tab" data-tab="import">Import Corrections</button>
         </div>
 
         <!-- Feature 1: Blank Slips -->
@@ -125,6 +126,26 @@
                 <button id="btn-clear-session" class="btn btn-danger" disabled>Clear &amp; Start New Period</button>
             </div>
             <div id="ot-status" class="status-msg hidden"></div>
+        </section>
+
+        <!-- Feature 3: Import Corrections (standalone) -->
+        <section class="card tab-content" id="tab-import">
+            <h2><span class="step-num">2c</span> Import Corrections</h2>
+            <p class="description">Drop your OPS CORRECTIONS spreadsheet — it extracts OT/CTE rows and generates PDF slips + Excel in one shot. No manual entry or editing. Heavy lifting done for you.</p>
+
+            <div class="import-panel">
+                <div class="file-upload-wrap">
+                    <input type="file" id="import-corrections" accept=".xls,.xlsx">
+                    <span id="import-status" class="file-status">No file chosen</span>
+                </div>
+                <p class="import-desc">Uses the &quot;Should Be&quot; and &quot;Diff&quot; columns. 1.0 in the note area → OT 1.0 / CTE 1.0. Otherwise → OT 1.5 / CTE 1.5.</p>
+                <div class="import-actions">
+                    <button id="btn-import-parse" class="btn btn-primary" disabled>Parse &amp; Preview</button>
+                    <button id="btn-import-generate" class="btn btn-primary" disabled>Generate OT Slips + Excel</button>
+                </div>
+                <div id="import-summary" class="import-summary hidden"></div>
+                <div id="import-result" class="status-msg hidden"></div>
+            </div>
         </section>
 
         <!-- About This Tool -->

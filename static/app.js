@@ -84,6 +84,12 @@
     const $btnClearSession = $("btn-clear-session");
     const $otStatus = $("ot-status");
     const $activeCardStatus = $("active-card-status");
+    const $importCorrections = $("import-corrections");
+    const $importStatus = $("import-status");
+    const $btnImportParse = $("btn-import-parse");
+    const $btnImportGenerate = $("btn-import-generate");
+    const $importSummary = $("import-summary");
+    const $importResult = $("import-result");
 
     const $confirmModal = $("confirm-modal");
     const $modalMessage = $("modal-message");
@@ -226,6 +232,101 @@
                 renderEmployeeState();
             }
         );
+    });
+
+    // -----------------------------------------------------------------------
+    // Import Corrections (standalone tab — does NOT merge into manual OT)
+    // -----------------------------------------------------------------------
+    let importedEntries = [];
+
+    $importCorrections.addEventListener("change", () => {
+        const file = $importCorrections.files[0];
+        if (file) {
+            $importStatus.textContent = file.name;
+            $btnImportParse.disabled = !(state.employees.length && state.payPeriodEnd);
+        } else {
+            $importStatus.textContent = "No file chosen";
+            $btnImportParse.disabled = true;
+            $btnImportGenerate.disabled = true;
+            $importSummary.classList.add("hidden");
+        }
+        importedEntries = [];
+        hideStatus($importResult);
+    });
+
+    $btnImportParse.addEventListener("click", async () => {
+        const file = $importCorrections.files[0];
+        if (!file || !state.employees.length || !state.payPeriodEnd) {
+            showStatus($importResult, "Upload employee list and set pay period in Setup first.", "error");
+            return;
+        }
+        showStatus($importResult, "Parsing...", "loading");
+        $btnImportParse.disabled = true;
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("employees", JSON.stringify(state.employees));
+            formData.append("payPeriodEnd", state.payPeriodEnd);
+            const resp = await fetch("/api/import-corrections", { method: "POST", body: formData });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Parse failed");
+            importedEntries = data.entries || [];
+            const unmatched = data.unmatched || [];
+            const empCount = new Set(importedEntries.map(e => e.empNo)).size;
+            $importSummary.classList.remove("hidden");
+            $importSummary.innerHTML = `<strong>${importedEntries.length}</strong> entries for <strong>${empCount}</strong> employees.` +
+                (unmatched.length ? ` <br>${unmatched.length} without emp # (name + date + OT only): ${unmatched.slice(0, 5).join(", ")}${unmatched.length > 5 ? "…" : ""}.` : "");
+            $btnImportGenerate.disabled = importedEntries.length === 0;
+            showStatus($importResult, "Ready to generate. Click Generate OT Slips + Excel.", "success");
+        } catch (err) {
+            showStatus($importResult, "Error: " + err.message, "error");
+        } finally {
+            $btnImportParse.disabled = false;
+        }
+    });
+
+    $btnImportGenerate.addEventListener("click", async () => {
+        if (!importedEntries.length || !state.payPeriodEnd) return;
+        startElapsedTimer($importResult, "Generating PDF and Excel...");
+        $btnImportGenerate.disabled = true;
+        try {
+            const otByEmp = {};
+            importedEntries.forEach(e => {
+                if (!otByEmp[e.empNo]) otByEmp[e.empNo] = { entries: [] };
+                otByEmp[e.empNo].entries.push({ date: e.date, category: e.category, hours: e.hours });
+            });
+            const employees = [...state.employees];
+            const seenUm = new Set();
+            importedEntries.forEach(e => {
+                if (e.empNo.startsWith("__UM__") && !seenUm.has(e.empNo)) {
+                    seenUm.add(e.empNo);
+                    employees.push({ emp_no: e.empNo, last: e.last, first: e.first });
+                }
+            });
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 120000);
+            const resp = await fetch("/api/generate-overtime", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employees, payPeriodEnd: state.payPeriodEnd, otEntries: otByEmp }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(t);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const pdfBytes = Uint8Array.from(atob(data.pdf), c => c.charCodeAt(0));
+            downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), data.pdfFilename);
+            const xlBytes = Uint8Array.from(atob(data.excel), c => c.charCodeAt(0));
+            downloadBlob(new Blob([xlBytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), data.excelFilename);
+            stopElapsedTimer($importResult);
+            showStatus($importResult, "PDF and Excel downloaded.", "success");
+        } catch (err) {
+            stopElapsedTimer($importResult);
+            const msg = err.name === "AbortError" ? "Request timed out — try again." : err.message;
+            showStatus($importResult, "Error: " + msg, "error");
+        } finally {
+            $btnImportGenerate.disabled = false;
+        }
     });
 
     function renderEmployeeState() {
@@ -466,6 +567,9 @@
         setOtControlsEnabled(!!ready);
         $btnGenerateOt.disabled = !(ready && state.otEntries.length > 0);
         $btnClearSession.disabled = state.otEntries.length === 0;
+        if ($btnImportParse && $importCorrections && $importCorrections.files[0]) {
+            $btnImportParse.disabled = !ready;
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -490,9 +594,6 @@
         if (!empNo) return showCardStatus("Search and select an employee first.", "error");
         if (!date) return showCardStatus("Select a date.", "error");
         if (!hours || hours <= 0) return showCardStatus("Enter hours greater than 0.", "error");
-
-        const week = dateToWeek(date, state.payPeriodEnd);
-        if (week === "?") return showCardStatus("Date is outside the selected pay period.", "error");
 
         const emp = state.employees.find(e => e.emp_no === empNo);
 

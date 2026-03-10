@@ -5,7 +5,7 @@ import json
 import base64
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 from flask import (
     Flask, render_template, request, jsonify, send_file, session
@@ -202,11 +202,14 @@ def fill_single_pdf(employee: dict, pp_end: str, ot_data: dict = None) -> bytes:
     end_dt = parse_date_flexible(pp_end)
     pp_end_formatted = end_dt.strftime(DATE_FMT_OUTPUT)
 
+    emp_no = str(employee.get("emp_no", "") or "").strip()
+    if emp_no.startswith("__UM__"):
+        emp_no = ""
     values = {
         "Employee Name": combined_name,
         "Dept": DEPT_CODE,
         "Ending Date": pp_end_formatted,
-        "Employee": employee["emp_no"],
+        "Employee": emp_no,
     }
 
     if ot_data:
@@ -277,12 +280,19 @@ def _aggregate_ot_by_week(ot_data: dict, wk1_start, wk1_end, wk2_start, wk2_end)
         if hours <= 0:
             continue
 
+        pp_start = wk1_start - timedelta(days=7)
+        if dt < pp_start or dt > wk2_end + timedelta(days=1):
+            continue
         if wk1_start <= dt <= wk1_end:
             week = weeks[0]
         elif wk2_start <= dt <= wk2_end:
             week = weeks[1]
+        elif dt < wk1_start:
+            week = weeks[0]
+        elif dt > wk2_end:
+            week = weeks[1]
         else:
-            continue
+            week = weeks[1] if dt > wk1_end else weeks[0]
 
         if cat in weeks[0]:
             week[cat] += hours
@@ -368,7 +378,10 @@ def generate_ot_excel(employees_with_ot: list, pp_end: str) -> bytes:
 
         emp_total = sum(w["row_total"] for w in weeks)
         grand_total_all += emp_total
-        emp_name = f"{emp['last']}, {emp['first']} (#{emp['emp_no']})"
+        emp_no_display = str(emp.get("emp_no", "") or "").strip()
+        if emp_no_display.startswith("__UM__"):
+            emp_no_display = ""
+        emp_name = f"{emp['last']}, {emp['first']}" + (f" (#{emp_no_display})" if emp_no_display else "")
 
         # Week 1 row
         ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num + 1, end_column=1)
@@ -516,6 +529,222 @@ def generate_slips():
     )
 
 
+# ---------------------------------------------------------------------------
+# Import from Corrections spreadsheet
+# ---------------------------------------------------------------------------
+# Column indices for OPS CORRECTIONS sheet: Name(2), Date(4), Should Be(8), Diff(10), Note(16)
+# Note "1.0" = rate 1.0x (OT 1.0 / CTE 1.0), else 1.5x (OT 1.5 / CTE 1.5)
+
+def _excel_serial_to_date(serial: float) -> Optional[str]:
+    if not serial or serial <= 0:
+        return None
+    try:
+        dt = datetime(1899, 12, 30) + timedelta(days=int(serial))
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def parse_corrections_spreadsheet(file_bytes: bytes, filename: str, employees: List[dict], pp_end: str) -> Tuple[List[dict], List[str]]:
+    """
+    Parse OPS CORRECTIONS xls/xlsx. Returns (ot_entries, unmatched_names).
+    ot_entries: [{ empNo, last, first, date, category, hours }]
+    """
+    ext = (filename or "").lower().split(".")[-1]
+    entries = []
+    unmatched = []
+
+    emp_lookup = {}
+    emp_by_last = {}  # last -> [employees] for fallback (initials, typos)
+    for e in employees:
+        last = str(e.get("last", "")).strip().upper()
+        first = str(e.get("first", "")).strip().upper()
+        key = f"{last}|{first}"
+        emp_lookup[key] = e
+        emp_lookup[f"{last}, {first}"] = e
+        if last not in emp_by_last:
+            emp_by_last[last] = []
+        emp_by_last[last].append(e)
+
+    def find_emp(name_str: str) -> Optional[dict]:
+        parts = [p.strip() for p in str(name_str).split(",", 1)]
+        if len(parts) < 2:
+            return None
+        last = parts[0].strip().upper()
+        first_raw = parts[1].strip().upper()
+        first = first_raw.rstrip(".")
+        keys = [
+            f"{last}|{first}",
+            f"{last}, {first}",
+            f"{last}|{first_raw}",
+            f"{last}|{first[0]}" if first else None,
+        ]
+        for k in keys:
+            if k and k in emp_lookup:
+                return emp_lookup[k]
+        if last in emp_by_last and len(emp_by_last[last]) == 1:
+            return emp_by_last[last][0]
+        if first and last in emp_by_last:
+            candidates = emp_by_last[last]
+            if len(candidates) == 1:
+                return candidates[0]
+            if len(first) == 1:
+                for e in candidates:
+                    cf = str(e.get("first", "")).strip().upper()
+                    if cf and cf[0] == first:
+                        return e
+        return None
+
+    def map_category(typ: str, note: str) -> Optional[str]:
+        typ = str(typ).strip().upper()
+        if typ not in ("OT", "CTE"):
+            return None
+        is_10 = "1.0" in str(note).strip() or str(note).strip() == "1"
+        if typ == "OT":
+            return "ot10" if is_10 else "ot15"
+        return "cte10" if is_10 else "cte15"
+
+    try:
+        if ext == "xls":
+            import xlrd
+            wb = xlrd.open_workbook(file_contents=file_bytes)
+            sh = wb.sheet_by_index(0)
+            for r in range(8, sh.nrows):
+                typ = str(sh.cell_value(r, 8)).strip().upper()
+                if typ not in ("OT", "CTE"):
+                    continue
+                name = str(sh.cell_value(r, 2)).strip()
+                date_str = _excel_serial_to_date(sh.cell_value(r, 4))
+                diff = sh.cell_value(r, 10)
+                note = str(sh.cell_value(r, 16)).strip()
+                try:
+                    hrs = round(float(diff), 2)
+                except (TypeError, ValueError):
+                    continue
+                if hrs <= 0:
+                    continue
+                cat = map_category(typ, note)
+                if not cat:
+                    continue
+                emp = find_emp(name)
+                if emp:
+                    entries.append({
+                        "empNo": emp["emp_no"],
+                        "last": emp["last"],
+                        "first": emp["first"],
+                        "date": date_str or "",
+                        "category": cat,
+                        "hours": hrs,
+                    })
+                else:
+                    if name and name not in unmatched:
+                        unmatched.append(name)
+                    parts = [p.strip() for p in name.split(",", 1)]
+                    last = parts[0] if parts else ""
+                    first = parts[1] if len(parts) > 1 else ""
+                    emp_key = f"__UM__{last}|{first}" if last or first else f"__UM__{len(unmatched)}"
+                    entries.append({
+                        "empNo": emp_key,
+                        "last": last,
+                        "first": first,
+                        "date": date_str or "",
+                        "category": cat,
+                        "hours": hrs,
+                    })
+        else:
+            from openpyxl import load_workbook
+            wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            sh = wb.active
+            for r, row in enumerate(sh.iter_rows(min_row=9, values_only=True)):
+                if not row or len(row) < 11:
+                    continue
+                typ = str(row[8] or "").strip().upper()
+                if typ not in ("OT", "CTE"):
+                    continue
+                name = str(row[2] or "").strip()
+                date_val = row[4]
+                if isinstance(date_val, (int, float)):
+                    date_str = _excel_serial_to_date(date_val)
+                elif isinstance(date_val, datetime):
+                    date_str = date_val.strftime("%Y-%m-%d")
+                else:
+                    date_str = ""
+                try:
+                    diff = row[10]
+                    hrs = round(float(diff or 0), 2)
+                except (TypeError, ValueError):
+                    continue
+                if hrs <= 0:
+                    continue
+                note = str(row[16] if len(row) > 16 else "").strip()
+                cat = map_category(typ, note)
+                if not cat:
+                    continue
+                emp = find_emp(name)
+                if emp:
+                    entries.append({
+                        "empNo": emp["emp_no"],
+                        "last": emp["last"],
+                        "first": emp["first"],
+                        "date": date_str or "",
+                        "category": cat,
+                        "hours": hrs,
+                    })
+                else:
+                    if name and name not in unmatched:
+                        unmatched.append(name)
+                    parts = [p.strip() for p in name.split(",", 1)]
+                    last = parts[0] if parts else ""
+                    first = parts[1] if len(parts) > 1 else ""
+                    emp_key = f"__UM__{last}|{first}" if last or first else f"__UM__{len(unmatched)}"
+                    entries.append({
+                        "empNo": emp_key,
+                        "last": last,
+                        "first": first,
+                        "date": date_str or "",
+                        "category": cat,
+                        "hours": hrs,
+                    })
+    except Exception as e:
+        app.logger.exception("parse_corrections_spreadsheet")
+        raise ValueError(f"Could not parse spreadsheet: {e}") from e
+
+    merged = {}
+    for e in entries:
+        key = (e["empNo"], e["date"], e["category"])
+        if key not in merged:
+            merged[key] = dict(e)
+        else:
+            merged[key]["hours"] = round(merged[key]["hours"] + e["hours"], 2)
+    entries = list(merged.values())
+
+    return entries, unmatched
+
+
+@app.route("/api/import-corrections", methods=["POST"])
+def import_corrections():
+    """Parse OPS CORRECTIONS spreadsheet and return OT entries to add to state."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    f = request.files["file"]
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+    employees = request.form.get("employees")
+    pp_end = request.form.get("payPeriodEnd", "")
+    if not employees or not pp_end:
+        return jsonify({"error": "Missing employees or pay period end date"}), 400
+    try:
+        emp_list = json.loads(employees)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid employees data"}), 400
+    file_bytes = f.read()
+    try:
+        entries, unmatched = parse_corrections_spreadsheet(file_bytes, f.filename, emp_list, pp_end)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"entries": entries, "unmatched": unmatched})
+
+
 @app.route("/api/generate-overtime", methods=["POST"])
 def generate_overtime():
     """Feature 2: Generate OT-filled slips + Excel for employees with OT data."""
@@ -527,10 +756,14 @@ def generate_overtime():
     if not pp_end:
         return jsonify({"error": "Missing pay period end date"}), 400
 
+    seen_emp_nos = set()
     emps_with_ot = []
     for emp in employees_all:
         emp_no = emp.get("emp_no", "")
+        if emp_no in seen_emp_nos:
+            continue
         if emp_no in ot_entries and ot_entries[emp_no].get("entries"):
+            seen_emp_nos.add(emp_no)
             emps_with_ot.append({"employee": emp, "ot_data": ot_entries[emp_no]})
 
     if not emps_with_ot:
