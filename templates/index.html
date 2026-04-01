@@ -214,6 +214,30 @@
                 <span class="esc-hint">Esc or Ctrl+Enter when done</span>
             </div>
             <div id="active-emp-entries"></div>
+            <div class="week-block-panel" id="week-block-panel">
+                <p class="week-block-lead">Add by week — pick Week 1 or 2, type the date range as on paper, then enter hours by type.</p>
+                <div class="week-block-row">
+                    <div class="form-group week-radio-wrap">
+                        <span class="label-inline">Week</span>
+                        <label class="week-radio"><input type="radio" name="ot-week" value="1" id="ot-week-1" checked> 1</label>
+                        <label class="week-radio"><input type="radio" name="ot-week" value="2" id="ot-week-2"> 2</label>
+                    </div>
+                    <div class="form-group week-range-wrap">
+                        <label for="ot-range-text">Date range</label>
+                        <input type="text" id="ot-range-text" placeholder="e.g. 3/23–3/25" autocomplete="off">
+                    </div>
+                </div>
+                <div class="week-block-cats">
+                    <div class="form-group"><label for="ot-wb-ot10">OT 1.0</label><input type="number" id="ot-wb-ot10" class="ot-wb-hrs" step="0.01" min="0" max="99" placeholder="0"></div>
+                    <div class="form-group"><label for="ot-wb-ot15">OT 1.5</label><input type="number" id="ot-wb-ot15" class="ot-wb-hrs" step="0.01" min="0" max="99" placeholder="0"></div>
+                    <div class="form-group"><label for="ot-wb-cte10">CTE 1.0</label><input type="number" id="ot-wb-cte10" class="ot-wb-hrs" step="0.01" min="0" max="99" placeholder="0"></div>
+                    <div class="form-group"><label for="ot-wb-cte15">CTE 1.5</label><input type="number" id="ot-wb-cte15" class="ot-wb-hrs" step="0.01" min="0" max="99" placeholder="0"></div>
+                </div>
+                <div class="week-block-actions">
+                    <button type="button" id="btn-add-week-block" class="btn btn-add">+ Add week block</button>
+                </div>
+            </div>
+            <div class="day-entry-divider"><span>Or one line per day</span></div>
             <div class="active-card-fields" id="entry-fields-row">
                 <div class="form-group">
                     <label for="ot-date">Date</label>

@@ -6,6 +6,52 @@
     const CAT_LABELS = { ot10: "OT 1.0", ot15: "OT 1.5", cte10: "CTE 1.0", cte15: "CTE 1.5" };
     const CATS = ["ot10", "ot15", "cte10", "cte15"];
 
+    function entryHours(e) {
+        if (e.kind === "weekBlock") {
+            return CATS.reduce((s, c) => s + (Number(e[c]) || 0), 0);
+        }
+        return Number(e.hours) || 0;
+    }
+    function fmtWeekBlockLine(e) {
+        const parts = [];
+        CATS.forEach(c => {
+            const v = Number(e[c]) || 0;
+            if (v > 0) parts.push(`${CAT_LABELS[c]} ${v.toFixed(2)}`);
+        });
+        return parts.join(", ");
+    }
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+    function buildOtPayloadFromEntries() {
+        const otByEmp = {};
+        state.otEntries.forEach(e => {
+            if (!otByEmp[e.empNo]) otByEmp[e.empNo] = { entries: [], weekBlocks: [] };
+            if (e.kind === "weekBlock") {
+                const row = { week: e.week, rangeText: (e.rangeText || "").trim() };
+                CATS.forEach(c => { row[c] = Math.round((Number(e[c]) || 0) * 100) / 100; });
+                otByEmp[e.empNo].weekBlocks.push(row);
+            } else {
+                otByEmp[e.empNo].entries.push({
+                    date: e.date, category: e.category, hours: e.hours,
+                });
+            }
+        });
+        return otByEmp;
+    }
+    function resetWeekBlockForm() {
+        if (!$otRangeText) return;
+        $otRangeText.value = "";
+        const w1 = document.querySelector("#ot-week-1");
+        if (w1) w1.checked = true;
+        document.querySelectorAll(".ot-wb-hrs").forEach(el => { el.value = ""; });
+    }
+
+
     // -----------------------------------------------------------------------
     // Theme
     // -----------------------------------------------------------------------
@@ -102,6 +148,9 @@
     const $activeEntries = $("active-emp-entries");
     const $btnDoneEmp = $("btn-done-emp");
     const $entryFields = $("entry-fields-row");
+    const $otRangeText = $("ot-range-text");
+    const $btnAddWeekBlock = $("btn-add-week-block");
+
 
     // Collapsible toggle headers
     const $cardsToggle = $("cards-toggle");
@@ -475,11 +524,15 @@
         if (!emp) return;
 
         $activeName.innerHTML = `<strong>${emp.last}, ${emp.first}</strong> <span class="emp-card-meta">#${emp.emp_no}</span>`;
+        if (state.payPeriodEnd && !$otDate.value) {
+            const { wk1Start } = payPeriodWeeks(state.payPeriodEnd);
+            $otDate.value = toISO(wk1Start);
+        }
         renderActiveEntries();
         hideStatus($activeCardStatus);
         $activeOverlay.classList.remove("hidden");
 
-        setTimeout(() => $otDate.focus(), 50);
+        setTimeout(() => ($otRangeText || $otDate).focus(), 50);
     }
 
     function closeActiveCard() {
@@ -489,6 +542,7 @@
         $activeOverlay.classList.add("hidden");
         $otDate.value = "";
         $otHours.value = "";
+        resetWeekBlockForm();
         hideStatus($activeCardStatus);
         renderCompletedCards();
         $empSearch.focus();
@@ -498,16 +552,29 @@
         const entries = state.otEntries
             .map((e, idx) => ({ ...e, _idx: idx }))
             .filter(e => e.empNo === activeEmpNo)
-            .sort((a, b) => a.date.localeCompare(b.date));
+            .sort((a, b) => {
+                const ka = a.kind === "weekBlock" ? `0-${a.week}-${a.rangeText}` : `1-${a.date}-${a.category}`;
+                const kb = b.kind === "weekBlock" ? `0-${b.week}-${b.rangeText}` : `1-${b.date}-${b.category}`;
+                return ka.localeCompare(kb);
+            });
 
         if (entries.length === 0) {
             $activeEntries.innerHTML = '<p class="active-empty">No entries yet. Add overtime below.</p>';
             return;
         }
 
-        const totalHrs = entries.reduce((s, e) => s + e.hours, 0);
+        const totalHrs = entries.reduce((s, e) => s + entryHours(e), 0);
 
         $activeEntries.innerHTML = entries.map(e => {
+            if (e.kind === "weekBlock") {
+                return `<div class="active-entry-row active-entry-weekblock">
+                <span class="row-wk">Wk ${e.week}</span>
+                <span class="row-date range-text">${escapeHtml(e.rangeText || "")}</span>
+                <span class="row-cat">${fmtWeekBlockLine(e)}</span>
+                <span class="row-hrs">${entryHours(e).toFixed(2)} hrs</span>
+                <button class="btn-remove" data-idx="${e._idx}" title="Remove">&times;</button>
+            </div>`;
+            }
             const d = new Date(e.date + "T00:00:00");
             const wk = dateToWeek(e.date, state.payPeriodEnd);
             return `<div class="active-entry-row">
@@ -559,6 +626,10 @@
         $otCategory.disabled = !enabled;
         $otHours.disabled = !enabled;
         $btnAddOt.disabled = !enabled;
+        if ($otRangeText) $otRangeText.disabled = !enabled;
+        if ($btnAddWeekBlock) $btnAddWeekBlock.disabled = !enabled;
+        document.querySelectorAll('input[name="ot-week"]').forEach(r => { r.disabled = !enabled; });
+        document.querySelectorAll(".ot-wb-hrs").forEach(el => { el.disabled = !enabled; });
     }
 
     function updateButtonStates() {
@@ -577,12 +648,53 @@
     // -----------------------------------------------------------------------
     $btnAddOt.addEventListener("click", addOtEntry);
     $otHours.addEventListener("keydown", (e) => { if (e.key === "Enter") addOtEntry(); });
+    if ($btnAddWeekBlock) $btnAddWeekBlock.addEventListener("click", addWeekBlockEntry);
+    document.querySelectorAll(".ot-wb-hrs").forEach(el => {
+        el.addEventListener("keydown", (e) => { if (e.key === "Enter") addWeekBlockEntry(); });
+    });
 
     let cardStatusTimer = null;
     function showCardStatus(msg, type) {
         showStatus($activeCardStatus, msg, type);
         clearTimeout(cardStatusTimer);
         cardStatusTimer = setTimeout(() => hideStatus($activeCardStatus), 3000);
+    }
+
+    function addWeekBlockEntry() {
+        const empNo = $empSelectedNo.value;
+        const weekEl = document.querySelector('input[name="ot-week"]:checked');
+        const week = weekEl ? parseInt(weekEl.value, 10) : 1;
+        const rangeText = ($otRangeText && $otRangeText.value || "").trim();
+        const ot10 = parseFloat($("ot-wb-ot10") && $("ot-wb-ot10").value) || 0;
+        const ot15 = parseFloat($("ot-wb-ot15") && $("ot-wb-ot15").value) || 0;
+        const cte10 = parseFloat($("ot-wb-cte10") && $("ot-wb-cte10").value) || 0;
+        const cte15 = parseFloat($("ot-wb-cte15") && $("ot-wb-cte15").value) || 0;
+        const totalH = ot10 + ot15 + cte10 + cte15;
+
+        if (!empNo) return showCardStatus("Search and select an employee first.", "error");
+        if (!rangeText) return showCardStatus("Enter a date range (e.g. 3/23–3/25).", "error");
+        if (!totalH || totalH <= 0) return showCardStatus("Enter hours in at least one category.", "error");
+
+        const emp = state.employees.find(e => e.emp_no === empNo);
+        const round2 = (x) => Math.round(x * 100) / 100;
+
+        state.otEntries.push({
+            kind: "weekBlock",
+            empNo, last: emp.last, first: emp.first,
+            week,
+            rangeText,
+            ot10: round2(ot10), ot15: round2(ot15), cte10: round2(cte10), cte15: round2(cte15),
+        });
+
+        saveState();
+        hideStatus($activeCardStatus);
+        renderActiveEntries();
+        renderCompletedCards();
+        renderSummary();
+        updateButtonStates();
+
+        resetWeekBlockForm();
+        if ($otRangeText) $otRangeText.focus();
     }
 
     function addOtEntry() {
@@ -611,7 +723,6 @@
         updateButtonStates();
 
         $otHours.value = "";
-        $otDate.value = "";
         $otDate.focus();
     }
 
@@ -640,7 +751,7 @@
         state.otEntries.forEach((e, idx) => {
             if (!groups[e.empNo]) groups[e.empNo] = { emp: e, entries: [], totalHrs: 0 };
             groups[e.empNo].entries.push({ ...e, _idx: idx });
-            groups[e.empNo].totalHrs += e.hours;
+            groups[e.empNo].totalHrs += entryHours(e);
         });
 
         const sorted = Object.values(groups).sort((a, b) =>
@@ -689,14 +800,29 @@
         const byEmp = {};
         state.otEntries.forEach(e => {
             if (!byEmp[e.empNo]) {
-                byEmp[e.empNo] = { last: e.last, first: e.first, empNo: e.empNo,
-                    wk: { 1: { cats: {}, dates: new Set() }, 2: { cats: {}, dates: new Set() } } };
+                byEmp[e.empNo] = {
+                    last: e.last, first: e.first, empNo: e.empNo,
+                    wk: {
+                        1: { cats: {}, dates: new Set(), ranges: [] },
+                        2: { cats: {}, dates: new Set(), ranges: [] },
+                    },
+                };
             }
-            const week = dateToWeek(e.date, state.payPeriodEnd);
-            if (week === "1" || week === "2") {
-                const w = byEmp[e.empNo].wk[week];
-                w.cats[e.category] = (w.cats[e.category] || 0) + e.hours;
-                w.dates.add(e.date);
+            if (e.kind === "weekBlock") {
+                const wn = e.week === 2 || e.week === "2" ? 2 : 1;
+                const w = byEmp[e.empNo].wk[wn];
+                CATS.forEach(c => {
+                    const v = Number(e[c]) || 0;
+                    if (v > 0) w.cats[c] = (w.cats[c] || 0) + v;
+                });
+                if (e.rangeText) w.ranges.push(String(e.rangeText).trim());
+            } else {
+                const week = dateToWeek(e.date, state.payPeriodEnd);
+                if (week === "1" || week === "2") {
+                    const w = byEmp[e.empNo].wk[week];
+                    w.cats[e.category] = (w.cats[e.category] || 0) + e.hours;
+                    w.dates.add(e.date);
+                }
             }
         });
 
@@ -720,6 +846,7 @@
             let empTotal = 0;
 
             const wk1Dates = fmtDatesSet(emp.wk["1"].dates);
+            const wk1Ranges = emp.wk["1"].ranges.length ? emp.wk["1"].ranges.join("; ") : "";
             let wk1Total = 0;
             const wk1Cells = CATS.map(c => {
                 const v = emp.wk["1"].cats[c] || 0; wk1Total += v;
@@ -728,6 +855,7 @@
             empTotal += wk1Total;
 
             const wk2Dates = fmtDatesSet(emp.wk["2"].dates);
+            const wk2Ranges = emp.wk["2"].ranges.length ? emp.wk["2"].ranges.join("; ") : "";
             let wk2Total = 0;
             const wk2Cells = CATS.map(c => {
                 const v = emp.wk["2"].cats[c] || 0; wk2Total += v;
@@ -736,8 +864,10 @@
             empTotal += wk2Total;
             grandTotal += empTotal;
 
-            const wk1Label = wk1Dates ? `Wk 1: ${wk1Dates}` : "Wk 1";
-            const wk2Label = wk2Dates ? `Wk 2: ${wk2Dates}` : "Wk 2";
+            const wk1LabelText = [wk1Dates, wk1Ranges].filter(Boolean).join("; ");
+            const wk2LabelText = [wk2Dates, wk2Ranges].filter(Boolean).join("; ");
+            const wk1Label = wk1LabelText ? `Wk 1: ${wk1LabelText}` : "Wk 1";
+            const wk2Label = wk2LabelText ? `Wk 2: ${wk2LabelText}` : "Wk 2";
 
             html += `<tr>
                 <td class="emp-name-cell" rowspan="2">${emp.last}, ${emp.first}<br><span style="font-size:0.78rem;color:var(--text-muted)">#${emp.empNo}</span></td>
@@ -795,11 +925,7 @@
         startElapsedTimer($otStatus, "Generating OT slips and Excel...");
         $btnGenerateOt.disabled = true;
 
-        const otByEmp = {};
-        state.otEntries.forEach(e => {
-            if (!otByEmp[e.empNo]) otByEmp[e.empNo] = { entries: [] };
-            otByEmp[e.empNo].entries.push({ date: e.date, category: e.category, hours: e.hours });
-        });
+        const otByEmp = buildOtPayloadFromEntries();
 
         try {
             const ctrl2 = new AbortController();

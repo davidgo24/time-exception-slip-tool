@@ -262,11 +262,35 @@ def fill_single_pdf(employee: dict, pp_end: str, ot_data: dict = None) -> bytes:
 
 
 def _aggregate_ot_by_week(ot_data: dict, wk1_start, wk1_end, wk2_start, wk2_end) -> list:
-    """Group OT entries into week 1 and week 2, summing hours by category."""
+    """Group OT entries into week 1 and week 2, summing hours by category.
+    Optional weekBlocks: [{ week: 1|2, rangeText, ot10, ot15, cte10, cte15 }]
+    for grouped date ranges (rangeText shown on the slip).
+    """
     weeks = [
-        {"ot10": 0.0, "ot15": 0.0, "cte10": 0.0, "cte15": 0.0, "dates": set(), "has_data": False, "row_total": 0.0},
-        {"ot10": 0.0, "ot15": 0.0, "cte10": 0.0, "cte15": 0.0, "dates": set(), "has_data": False, "row_total": 0.0},
+        {"ot10": 0.0, "ot15": 0.0, "cte10": 0.0, "cte15": 0.0, "dates": set(), "range_texts": [], "has_data": False, "row_total": 0.0},
+        {"ot10": 0.0, "ot15": 0.0, "cte10": 0.0, "cte15": 0.0, "dates": set(), "range_texts": [], "has_data": False, "row_total": 0.0},
     ]
+
+    for block in ot_data.get("weekBlocks", []):
+        try:
+            wk_idx = int(block.get("week", 0)) - 1
+        except (TypeError, ValueError):
+            continue
+        if wk_idx not in (0, 1):
+            continue
+        w = weeks[wk_idx]
+        rt = str(block.get("rangeText", "") or "").strip()
+        if rt:
+            w["range_texts"].append(rt)
+        for cat_key in ("ot10", "ot15", "cte10", "cte15"):
+            try:
+                h = round(float(block.get(cat_key, 0) or 0), 2)
+            except (TypeError, ValueError):
+                h = 0.0
+            if h > 0 and cat_key in w:
+                w[cat_key] += h
+                w["has_data"] = True
+                w["row_total"] += h
 
     entries = ot_data.get("entries", [])
     for entry in entries:
@@ -302,7 +326,12 @@ def _aggregate_ot_by_week(ot_data: dict, wk1_start, wk1_end, wk2_start, wk2_end)
 
     for w in weeks:
         sorted_dates = sorted(w["dates"])
-        w["dates_str"] = ", ".join(format_date_short(d) for d in sorted_dates)
+        day_part = ", ".join(format_date_short(d) for d in sorted_dates)
+        range_parts = w.get("range_texts") or []
+        parts = list(range_parts)
+        if day_part:
+            parts.append(day_part)
+        w["dates_str"] = "; ".join(parts)
 
     return weeks
 
@@ -762,9 +791,12 @@ def generate_overtime():
         emp_no = emp.get("emp_no", "")
         if emp_no in seen_emp_nos:
             continue
-        if emp_no in ot_entries and ot_entries[emp_no].get("entries"):
+        bundle = ot_entries.get(emp_no) or {}
+        has_entries = bool(bundle.get("entries"))
+        has_blocks = bool(bundle.get("weekBlocks"))
+        if emp_no in ot_entries and (has_entries or has_blocks):
             seen_emp_nos.add(emp_no)
-            emps_with_ot.append({"employee": emp, "ot_data": ot_entries[emp_no]})
+            emps_with_ot.append({"employee": emp, "ot_data": bundle})
 
     if not emps_with_ot:
         return jsonify({"error": "No overtime entries found"}), 400

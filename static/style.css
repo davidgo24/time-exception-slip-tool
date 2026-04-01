@@ -425,8 +425,8 @@ input:focus, select:focus {
     background: var(--card);
     border-radius: 12px;
     box-shadow: var(--card-shadow);
-    width: 520px;
-    max-width: 95vw;
+    width: 560px;
+    max-width: 96vw;
     max-height: 85vh;
     overflow-y: auto;
     padding: 1.4rem;
@@ -728,3 +728,62 @@ td:first-child { text-align: left; }
     .header-inner { flex-direction: column; gap: 0.75rem; text-align: center; }
     .theme-switcher { justify-content: center; }
 }
+
+/* Week block panel (OT overlay) */
+.week-block-panel {
+    margin-top: 0.5rem;
+    padding: 0.75rem 0.65rem;
+    background: var(--card-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.week-block-lead {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 0.65rem;
+    line-height: 1.35;
+}
+.week-block-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-end;
+    margin-bottom: 0.5rem;
+}
+.week-radio-wrap { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.label-inline { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); margin-right: 0.25rem; }
+.week-radio { font-size: 0.88rem; cursor: pointer; }
+.week-range-wrap { flex: 1; min-width: 180px; }
+.week-block-cats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.45rem 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.week-block-cats .form-group { margin-bottom: 0; }
+.week-block-cats label { font-size: 0.72rem; }
+.week-block-cats input { width: 100%; padding: 0.35rem 0.4rem; font-size: 0.88rem; }
+.week-block-actions { display: flex; justify-content: flex-end; }
+.day-entry-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.85rem 0 0.35rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+.day-entry-divider::before,
+.day-entry-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+.active-entry-weekblock .row-date.range-text {
+    flex: 1;
+    min-width: 5.5rem;
+    width: auto;
+    color: var(--text);
+    font-weight: 500;
+}
+.active-entry-weekblock .row-cat { flex: 1.2; min-width: 0; font-size: 0.8rem; }
